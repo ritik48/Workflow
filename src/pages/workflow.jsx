@@ -1,5 +1,7 @@
 /* eslint-disable react/prop-types */
 import { IoIosArrowRoundBack } from "react-icons/io";
+import { IoCloseOutline } from "react-icons/io5";
+
 import { useNavigate, useParams } from "react-router-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
@@ -7,6 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 import ReactFlow, {
     Background,
     Controls,
+    MarkerType,
     MiniMap,
     SelectionMode,
     addEdge,
@@ -14,8 +17,9 @@ import ReactFlow, {
     useNodesState,
 } from "reactflow";
 import { Card } from "../components/Cards";
+import { useWorflowContext } from "../WorkflowContext";
 
-function Nav({ title, onAddCard }) {
+function Nav({ title, onAddCard, saving }) {
     const [cardOption, setCardOption] = useState("not_selected");
     const navigate = useNavigate();
 
@@ -49,11 +53,14 @@ function Nav({ title, onAddCard }) {
                     </select>
                 </div>
             </div>
-            <div className="w-full flex justify-center font-semibold items-center gap-2">
-                <div>Workflow name : </div>
-                <div className="text-[#5d5c5c]">
-                    {!title ? "Loading..." : title}
+            <div className="w-full flex items-center">
+                <div className="flex gap-2 font-semibold ml-60">
+                    <div>Workflow name : </div>
+                    <div className="text-[#5d5c5c]">
+                        {!title ? "Loading..." : title}
+                    </div>
                 </div>
+                {saving && <div className="font-bold ml-auto">Saving...</div>}
             </div>
         </div>
     );
@@ -61,67 +68,381 @@ function Nav({ title, onAddCard }) {
 
 export function Workflow() {
     const { id } = useParams();
+    const [saving, setSaving] = useState(false);
+
+    const {
+        setWid,
+        popup,
+        setPopup,
+        title,
+        description,
+        setTitle,
+        setDescription,
+        cardId,
+    } = useWorflowContext();
+
     const [workflow, setWorkflow] = useState(null);
 
-    const updatingNodes = useRef(null);
+    const currentMoving = useRef(null);
 
-    const [initialNodes, setInitialNodes] = useState([]);
-    const [initialEdges, setInitialEdges] = useState([]);
+    const [nodes, setNodes] = useNodesState([]);
+    const [edges, setEdges] = useEdgesState([]);
+
+    const onConnect = useCallback(
+        (connection) => {
+            console.log("connection = ", connection);
+            const new_edge = {
+                ...connection,
+                animated: true,
+                id: `${edges.length} + 1`,
+                markerEnd: { type: MarkerType.ArrowClosed, color: "#1f4f9c" },
+                style: {
+                    strokeWidth: 2,
+                    stroke: "#1f4f9c",
+                },
+            };
+
+            setSaving(true);
+            // save to localstorage
+            const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
+            const currentWorkflow = allWorkflow.find(
+                (workflow) => workflow.id === id
+            );
+            currentWorkflow.edges.push(new_edge);
+
+            const updatedWorkflows = allWorkflow.map((w) => {
+                if (w.id === id) {
+                    return currentWorkflow;
+                }
+                return w;
+            });
+            console.log(updatedWorkflows);
+
+            localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+
+            setEdges((prevEdges) => addEdge(new_edge, prevEdges));
+            setSaving(false);
+        },
+        [edges, setEdges, id]
+    );
+
+    const onEdgesChange = (x) => {
+        if (!x) return;
+        const current = x[0];
+
+        if (current.type === "remove") {
+            console.log("current = ", current);
+
+            setSaving(true);
+            const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
+
+            const currentWorkflow = allWorkflow.find((w) => w.id === id);
+
+            const e = currentWorkflow.edges.filter(
+                (ed) => ed.id !== current.id
+            );
+            currentWorkflow.edges = e;
+            console.log(e);
+
+            const updatedWorkflows = allWorkflow.map((w) => {
+                if (w.id === id) {
+                    return currentWorkflow;
+                }
+                return w;
+            });
+            localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+
+            setEdges(e);
+            setSaving(false);
+        }
+    };
+
+    const onNodesChange = (x) => {
+        console.log(x);
+        if (!x) return;
+        const current = x[0];
+        console.log(currentMoving);
+
+        // get the final position of node after being dragged
+        if (current.dragging === true) {
+            currentMoving.current = current.position;
+            setNodes((prev) => {
+                return prev.map((p) => {
+                    if (p.id === current.id)
+                        return { ...p, position: currentMoving.current };
+                    else return p;
+                });
+            });
+
+            // update the node position in localstorage after dragging is stopped
+        } else if (current.dragging === false) {
+            if (!currentMoving.current) return;
+            setSaving(true);
+
+            const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
+            const currentWorkflow = allWorkflow.find(
+                (workflow) => workflow.id === id
+            );
+
+            currentWorkflow.cards = currentWorkflow.cards.map((c) => {
+                if (c.id === current.id) {
+                    return { ...c, position: currentMoving.current };
+                } else return c;
+            });
+
+            //update all workflows
+            const updatedWorkflows = allWorkflow.map((w) => {
+                if (w.id === id) {
+                    return currentWorkflow;
+                }
+                return w;
+            });
+
+            localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+            setSaving(false);
+
+            // this event is fired when a node is removed, and the result of this event are the remaining nodes
+        } else if (current.type === "reset") {
+            console.log("1 reset");
+            const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
+            const currentWorkflow = allWorkflow.find(
+                (workflow) => workflow.id === id
+            );
+
+            console.log("2 ", x);
+            const remainingNodes = x.map((c) => ({
+                ...c.item,
+                type: "card",
+            }));
+            const remainingCardIds = remainingNodes.map((c) => c.id);
+
+            const cardRemoved = currentWorkflow.cards.filter(
+                (c) => !remainingCardIds.includes(c.id)
+            );
+
+            // remove edges whose source is this 'removed card'
+            const remainingEdges = currentWorkflow.edges.filter(
+                (e) =>
+                    e.source !== cardRemoved[0].id &&
+                    e.target !== cardRemoved[0].id
+            );
+
+            setSaving(true);
+
+            const currentUpdated = {
+                ...currentWorkflow,
+                cards: remainingNodes,
+                edges: remainingEdges,
+                steps: remainingNodes.length,
+            };
+
+            //update all workflows
+            const updatedWorkflows = allWorkflow.map((w) => {
+                if (w.id === id) {
+                    return currentUpdated;
+                }
+                return w;
+            });
+
+            localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+
+            setSaving(false);
+            setNodes(remainingNodes);
+        } else if (current.type === "remove") {
+            setSaving(true);
+            const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
+            const currentWorkflow = allWorkflow.find(
+                (workflow) => workflow.id === id
+            );
+
+            currentWorkflow.cards = [];
+            currentWorkflow.steps = 0;
+
+            //update all workflows
+            const updatedWorkflows = allWorkflow.map((w) => {
+                if (w.id === id) {
+                    return currentWorkflow;
+                }
+                return w;
+            });
+
+            localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+
+            setSaving(false);
+            setNodes([]);
+        }
+    };
 
     const navigate = useNavigate();
 
+    // Add new card
+    const onAddCard = (card_type) => {
+        const new_card = {
+            id: uuidv4(),
+            data: { type: card_type, title: card_type, description: "" },
+            type: "card",
+            position: { x: 0, y: 0 },
+        };
+
+        setSaving(true);
+
+        const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
+        const currentWorkflow = allWorkflow.find(
+            (workflow) => workflow.id === id
+        );
+
+        currentWorkflow.cards = [...currentWorkflow.cards, new_card];
+        currentWorkflow.steps = currentWorkflow.cards.length;
+
+        //update all workflows
+        const updatedWorkflows = allWorkflow.map((w) => {
+            if (w.id === id) {
+                return currentWorkflow;
+            }
+            return w;
+        });
+
+        localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+
+        setSaving(false);
+        setNodes((prev) => [...prev, new_card]);
+    };
+
     useEffect(() => {
-        const exists = localStorage.getItem("workflows")
+        const findWorkflow = localStorage.getItem("workflows")
             ? JSON.parse(localStorage.getItem("workflows")).find(
                   (w) => w.id === id
               )
             : null;
 
-        if (!exists) {
+        if (!findWorkflow) {
             navigate("/");
             return;
         }
-        setWorkflow(exists);
 
-        setInitialNodes(exists.cards);
-        setInitialEdges(exists.edges);
-    }, [navigate, id]);
+        setWid(id);
 
-    function handleAddCard(card_type) {
-        const new_card = {
-            id: uuidv4(),
-            data: { type: card_type },
-            type: "card",
-            position: { x: 0, y: 0 },
-        };
+        setWorkflow(findWorkflow);
+        setNodes(findWorkflow.cards ? findWorkflow.cards : []);
+        setEdges(findWorkflow.edges ? findWorkflow.edges : []);
+    }, [navigate, id, setNodes, setEdges, setWid]);
 
-        let items = JSON.parse(localStorage.getItem("workflows"));
-        let prev_cards = items.find((item) => item.id === id).cards;
+    function handleEditCardDetail() {
+        if (title.length < 3) {
+            alert("Title too short");
+            return;
+        }
 
-        prev_cards = [...prev_cards, new_card];
+        const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
+        const currentWorkflow = allWorkflow.find(
+            (workflow) => workflow.id === id
+        );
 
-        let updatedWorkflows = items.map((item) => {
-            if (item.id === id) {
-                return { ...item, cards: prev_cards };
+        const currentCards = currentWorkflow.cards.map((c) => {
+            if (c.id === cardId) {
+                return {
+                    ...c,
+                    data: { type: c.data.type, title, description },
+                };
+            } else return c;
+        });
+
+        currentWorkflow.cards = currentCards;
+
+        //update all workflows
+        const updatedWorkflows = allWorkflow.map((w) => {
+            if (w.id === id) {
+                return currentWorkflow;
             }
-            return item;
+            return w;
         });
 
         localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
-        setInitialNodes(prev_cards);
+
+        setNodes((prev) => {
+            return prev.map((p) => {
+                if (p.id === cardId) {
+                    console.log(p);
+                    return {
+                        ...p,
+                        data: { type: p.data.type, title, description },
+                    };
+                } else {
+                    return p;
+                }
+            });
+        });
+
+        setPopup(false);
     }
 
     return (
-        <div className="h-full flex flex-col">
-            <Nav title={workflow?.title} onAddCard={handleAddCard} />
+        <div className="h-full flex flex-col relative overflow-hidden">
+            <Nav
+                title={workflow?.title}
+                onAddCard={onAddCard}
+                saving={saving}
+            />
+
             {workflow && (
                 <Flow
-                    initialEdges={initialEdges}
-                    initial={initialNodes}
-                    updatingNodes={updatingNodes}
-                    workflow_id={id}
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onConnect={onConnect}
                 />
             )}
+            <div
+                className={`bg-[#ffffff] shadow-lg absolute inset-0 left-1/2 transition-all duration-300 ease-in-out translate-x-[100%] ${
+                    popup ? "translate-x-0" : ""
+                }`}
+            >
+                <div>
+                    <div className="flex items-center border px-4 py-2 justify-between">
+                        <h1 className="text-lg font-semibold text-[#332f62]">
+                            Project Custom card
+                        </h1>
+                        <button
+                            onClick={() => setPopup(false)}
+                            className="text-[#332f62] hover:text-[#655dba]"
+                        >
+                            <IoCloseOutline size={25} />
+                        </button>
+                    </div>
+                    <div>
+                        <div className="px-4 py-4 flex flex-col gap-2">
+                            <span className="text-lg">Card title</span>
+                            <input
+                                placeholder="Enter card title"
+                                onChange={(e) => setTitle(e.target.value)}
+                                value={title}
+                                className="border test-sm outline-none px-2 py-2 rounded-md focus:outline-blue-200 outline-offset-0"
+                            />
+                        </div>
+                        <div className="px-4 py-4 flex flex-col gap-2">
+                            <span className="text-lg">
+                                Card details{" "}
+                                <span className="text-sm text-[#585757]">
+                                    (something about the card)
+                                </span>
+                            </span>
+                            <textarea
+                                onChange={(e) => setDescription(e.target.value)}
+                                value={description}
+                                className="border h-[100px] test-sm outline-none px-2 py-2 rounded-md focus:outline-blue-200 outline-offset-0"
+                                placeholder="What is this card about ?"
+                            ></textarea>
+                        </div>
+                        <button
+                            onClick={handleEditCardDetail}
+                            className="font-semibold mx-4 text-md transition-all duration-200 ease-in-out hover:bg-[#302e42] bg-[#585596] text-[white] px-4 py-2 rounded-md"
+                        >
+                            Save
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }
@@ -130,48 +451,7 @@ const nodeTypes = {
     card: Card,
 };
 
-function Flow({ initialEdges, initial, workflow_id }) {
-    const [nodes, setNodes, onNodesChange] = useNodesState([]);
-    const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-
-    const onConnect = useCallback(
-        (connection) => {
-            const edge = {
-                ...connection,
-                animated: true,
-                id: `${edges.length} + 1`,
-                type: "customEdge",
-            };
-            setEdges((prevEdges) => addEdge(edge, prevEdges));
-        },
-        [edges, setEdges]
-    );
-
-    useEffect(() => {
-        setNodes(initial);
-        setEdges(initialEdges);
-    }, [initial, setNodes, initialEdges, setEdges]);
-
-    useEffect(() => {
-        const interval = setInterval(() => {
-            const w = JSON.parse(localStorage.getItem("workflows")).map((f) => {
-                if (f.id === workflow_id) {
-                    return {
-                        ...f,
-                        cards: [...nodes],
-                        edges: [...edges],
-                        steps: nodes.length,
-                    };
-                } else {
-                    return f;
-                }
-            });
-            localStorage.setItem("workflows", JSON.stringify(w));
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [nodes, workflow_id, edges]);
-
+function Flow({ nodes, edges, onNodesChange, onEdgesChange, onConnect }) {
     return (
         <ReactFlow
             nodeTypes={nodeTypes}
@@ -181,11 +461,9 @@ function Flow({ initialEdges, initial, workflow_id }) {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             selectionMode={SelectionMode.Partial}
-            // fitView
         >
             <Controls />
             <MiniMap />
-            {/* <MiniMap nodeStrokeWidth={3} /> */}
             <Background variant="dots" gap={12} size={1} />
         </ReactFlow>
     );
