@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.active {
+    border-right: 4px solid rgb(255, 137, 68);
+    color: rgb(13, 13, 149);
+}
