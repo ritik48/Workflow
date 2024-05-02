@@ -83,14 +83,38 @@ export function Workflow() {
 
     const [workflow, setWorkflow] = useState(null);
 
+    // for storing the position of the node that is currently being moved
     const currentMoving = useRef(null);
 
     const [nodes, setNodes] = useNodesState([]);
     const [edges, setEdges] = useEdgesState([]);
 
+    const getCurrentWorkflow = useCallback(() => {
+        const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
+        const currentWorkflow = allWorkflow.find(
+            (workflow) => workflow.id === id
+        );
+
+        return { ...currentWorkflow };
+    }, [id]);
+
+    const updateWorkflow = useCallback(
+        (updatedWorkflow) => {
+            const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
+            const updatedWorkflows = allWorkflow.map((w) => {
+                if (w.id === id) {
+                    return updatedWorkflow;
+                }
+                return w;
+            });
+
+            localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+        },
+        [id]
+    );
+
     const onConnect = useCallback(
         (connection) => {
-            console.log("connection = ", connection);
             const new_edge = {
                 ...connection,
                 animated: true,
@@ -103,27 +127,17 @@ export function Workflow() {
             };
 
             setSaving(true);
+
             // save to localstorage
-            const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
-            const currentWorkflow = allWorkflow.find(
-                (workflow) => workflow.id === id
-            );
+            const currentWorkflow = getCurrentWorkflow();
             currentWorkflow.edges.push(new_edge);
 
-            const updatedWorkflows = allWorkflow.map((w) => {
-                if (w.id === id) {
-                    return currentWorkflow;
-                }
-                return w;
-            });
-            console.log(updatedWorkflows);
-
-            localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+            updateWorkflow(currentWorkflow);
 
             setEdges((prevEdges) => addEdge(new_edge, prevEdges));
             setSaving(false);
         },
-        [edges, setEdges, id]
+        [edges, setEdges, getCurrentWorkflow, updateWorkflow]
     );
 
     const onEdgesChange = (x) => {
@@ -131,26 +145,14 @@ export function Workflow() {
         const current = x[0];
 
         if (current.type === "remove") {
-            console.log("current = ", current);
-
             setSaving(true);
-            const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
 
-            const currentWorkflow = allWorkflow.find((w) => w.id === id);
-
+            const currentWorkflow = getCurrentWorkflow();
             const e = currentWorkflow.edges.filter(
                 (ed) => ed.id !== current.id
             );
             currentWorkflow.edges = e;
-            console.log(e);
-
-            const updatedWorkflows = allWorkflow.map((w) => {
-                if (w.id === id) {
-                    return currentWorkflow;
-                }
-                return w;
-            });
-            localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+            updateWorkflow(currentWorkflow);
 
             setEdges(e);
             setSaving(false);
@@ -158,10 +160,8 @@ export function Workflow() {
     };
 
     const onNodesChange = (x) => {
-        console.log(x);
         if (!x) return;
         const current = x[0];
-        console.log(currentMoving);
 
         // get the final position of node after being dragged
         if (current.dragging === true) {
@@ -179,37 +179,21 @@ export function Workflow() {
             if (!currentMoving.current) return;
             setSaving(true);
 
-            const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
-            const currentWorkflow = allWorkflow.find(
-                (workflow) => workflow.id === id
-            );
-
+            const currentWorkflow = getCurrentWorkflow();
             currentWorkflow.cards = currentWorkflow.cards.map((c) => {
                 if (c.id === current.id) {
                     return { ...c, position: currentMoving.current };
                 } else return c;
             });
+            //update workflow
+            updateWorkflow(currentWorkflow);
 
-            //update all workflows
-            const updatedWorkflows = allWorkflow.map((w) => {
-                if (w.id === id) {
-                    return currentWorkflow;
-                }
-                return w;
-            });
-
-            localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
             setSaving(false);
 
             // this event is fired when a node is removed, and the result of this event are the remaining nodes
         } else if (current.type === "reset") {
-            console.log("1 reset");
-            const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
-            const currentWorkflow = allWorkflow.find(
-                (workflow) => workflow.id === id
-            );
+            const currentWorkflow = getCurrentWorkflow();
 
-            console.log("2 ", x);
             const remainingNodes = x.map((c) => ({
                 ...c.item,
                 type: "card",
@@ -237,36 +221,20 @@ export function Workflow() {
             };
 
             //update all workflows
-            const updatedWorkflows = allWorkflow.map((w) => {
-                if (w.id === id) {
-                    return currentUpdated;
-                }
-                return w;
-            });
-
-            localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+            updateWorkflow(currentUpdated);
 
             setSaving(false);
             setNodes(remainingNodes);
         } else if (current.type === "remove") {
             setSaving(true);
-            const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
-            const currentWorkflow = allWorkflow.find(
-                (workflow) => workflow.id === id
-            );
+
+            const currentWorkflow = getCurrentWorkflow();
 
             currentWorkflow.cards = [];
             currentWorkflow.steps = 0;
 
             //update all workflows
-            const updatedWorkflows = allWorkflow.map((w) => {
-                if (w.id === id) {
-                    return currentWorkflow;
-                }
-                return w;
-            });
-
-            localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+            updateWorkflow(currentWorkflow);
 
             setSaving(false);
             setNodes([]);
@@ -286,23 +254,13 @@ export function Workflow() {
 
         setSaving(true);
 
-        const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
-        const currentWorkflow = allWorkflow.find(
-            (workflow) => workflow.id === id
-        );
+        const currentWorkflow = getCurrentWorkflow();
 
         currentWorkflow.cards = [...currentWorkflow.cards, new_card];
         currentWorkflow.steps = currentWorkflow.cards.length;
 
         //update all workflows
-        const updatedWorkflows = allWorkflow.map((w) => {
-            if (w.id === id) {
-                return currentWorkflow;
-            }
-            return w;
-        });
-
-        localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+        updateWorkflow(currentWorkflow);
 
         setSaving(false);
         setNodes((prev) => [...prev, new_card]);
@@ -333,10 +291,7 @@ export function Workflow() {
             return;
         }
 
-        const allWorkflow = JSON.parse(localStorage.getItem("workflows"));
-        const currentWorkflow = allWorkflow.find(
-            (workflow) => workflow.id === id
-        );
+        const currentWorkflow = getCurrentWorkflow();
 
         const currentCards = currentWorkflow.cards.map((c) => {
             if (c.id === cardId) {
@@ -350,19 +305,11 @@ export function Workflow() {
         currentWorkflow.cards = currentCards;
 
         //update all workflows
-        const updatedWorkflows = allWorkflow.map((w) => {
-            if (w.id === id) {
-                return currentWorkflow;
-            }
-            return w;
-        });
-
-        localStorage.setItem("workflows", JSON.stringify(updatedWorkflows));
+        updateWorkflow(currentWorkflow);
 
         setNodes((prev) => {
             return prev.map((p) => {
                 if (p.id === cardId) {
-                    console.log(p);
                     return {
                         ...p,
                         data: { type: p.data.type, title, description },
@@ -375,7 +322,7 @@ export function Workflow() {
 
         setPopup(false);
     }
-
+    console.log("popup = ", popup);
     return (
         <div className="h-full flex flex-col relative overflow-hidden">
             <Nav
@@ -394,8 +341,8 @@ export function Workflow() {
                 />
             )}
             <div
-                className={`bg-[#ffffff] shadow-lg absolute inset-0 left-1/2 transition-all duration-300 ease-in-out translate-x-[100%] ${
-                    popup ? "translate-x-0" : ""
+                className={`bg-[#ffffff] shadow-lg absolute inset-0 left-1/2 transition-all duration-300 ease-in-out ${
+                    popup ? "translate-x-0" : "translate-x-[100%]"
                 }`}
             >
                 <div>
@@ -464,7 +411,12 @@ function Flow({ nodes, edges, onNodesChange, onEdgesChange, onConnect }) {
         >
             <Controls />
             <MiniMap />
-            <Background variant="dots" gap={12} size={1} />
+            <Background
+                variant="dots"
+                gap={12}
+                size={1}
+                style={{ backgroundColor: "#f7edff" }}
+            />
         </ReactFlow>
     );
 }

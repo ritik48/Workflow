@@ -1,6 +1,5 @@
 /* eslint-disable react/prop-types */
 import { MdSpaceDashboard } from "react-icons/md";
-import { PiShareNetwork } from "react-icons/pi";
 import { NavLink, Outlet } from "react-router-dom";
 
 export default function Layout() {
@@ -8,8 +7,8 @@ export default function Layout() {
         <div className="w-screen h-screen grid grid-cols-[120px_1fr]">
             <aside className="bg-[#ffffff]">
                 <div className="font-semibold py-4 bg-[#262537] text-[#e2e2e2] text-md flex justify-center items-center gap-2">
-                    <div>Easy Funnel</div>
-                    <PiShareNetwork />
+                    <div>Easy Workflow</div>
+                    {/* <PiShareNetwork /> */}
                 </div>
                 <div className="flex flex-col">
                     <NavLink

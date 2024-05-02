@@ -3,13 +3,13 @@
 import { IoIosSearch } from "react-icons/io";
 import { IoCloseOutline } from "react-icons/io5";
 import { GrFormView } from "react-icons/gr";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { MdOutlineDeleteOutline } from "react-icons/md";
 
 import { v4 as uuidv4 } from "uuid";
 import { Link, useNavigate } from "react-router-dom";
 
-function Nav({ onAddWorkflow }) {
+function Nav({ onAddWorkflow, search, setSearch }) {
     const [popup, setPopup] = useState(false);
     const [workflowTitle, setWorkflowTitle] = useState("");
 
@@ -48,19 +48,21 @@ function Nav({ onAddWorkflow }) {
                     </div>
                 </div>
             )}
-            <div className="flex items-center justify-between">
+            <div className="w-5/6 flex items-center justify-between">
                 <div className="flex items-center py-2 px-4 bg-white w-fit rounded-md shadow-md">
                     <IoIosSearch size={20} color="grey" />
                     <input
                         placeholder="Search workflow"
                         className="outline-none px-4 text-md text-slate-700"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
                     />
                 </div>
                 <button
                     onClick={() => setPopup(true)}
                     className="font-semibold text-md transition-all duration-200 ease-in-out hover:bg-[#302e42] bg-[#585596] text-[white] px-4 py-2 rounded-md"
                 >
-                    Add new funnel
+                    Add new Workflow
                 </button>
             </div>
         </>
@@ -77,7 +79,7 @@ function DashboardContent({ workflows, onRemoveWorkflow }) {
                     </h1>
                 </div>
             ) : (
-                <div className="space-y-4 sm:h-[500px] overflow-y-scroll mt-10">
+                <div className="w-5/6 space-y-4 sm:h-[500px] overflow-y-scroll mt-10">
                     {workflows.map(({ title, steps, createdAt, id }) => {
                         return (
                             <div
@@ -140,7 +142,22 @@ export function Dashboard() {
             : [];
     });
 
-    console.log("qfqwf = ", workflows);
+    const [search, setSearch] = useState("");
+
+    useEffect(() => {
+        if (search.length == 0) {
+            setWorkflows(() => {
+                return localStorage.getItem("workflows")
+                    ? JSON.parse(localStorage.getItem("workflows"))
+                    : [];
+            });
+            return;
+        }
+
+        setWorkflows((prev) => {
+            return prev.filter((p) => p.title.includes(search));
+        });
+    }, [search]);
 
     const navigate = useNavigate();
 
@@ -175,8 +192,8 @@ export function Dashboard() {
     }
 
     return (
-        <div className="w-5/6 mx-auto h-full flex flex-col relative py-10">
-            <Nav onAddWorkflow={handleAddWorkflow} />
+        <div className="mx-auto h-full flex items-center flex-col relative py-10">
+            <Nav onAddWorkflow={handleAddWorkflow} search={search} setSearch={setSearch}/>
             <DashboardContent
                 workflows={workflows}
                 onRemoveWorkflow={handleRemoveWorkflow}
